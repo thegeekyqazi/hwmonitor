@@ -22,6 +22,10 @@ def main():
 
             print("\n" + "=" * 70)
             if ps:
+                if ps.spawned:
+                    print(f"  >>> SPAWNED: {[(s['pid'], s['name']) for s in ps.spawned]}")
+                if ps.exited:
+                    print(f"  >>> EXITED: {ps.exited}")
                 print(f"CPU {ps.cpu_percent:5.1f}%   "
                       f"RAM {ps.memory_percent:5.1f}%   "
                       f"Disk R {ps.disk_read_mb_s:6.1f} MB/s   "

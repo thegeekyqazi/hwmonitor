@@ -21,16 +21,34 @@ class HardwareEngine(Engine):
 
     def setup(self):
         import clr  # pythonnet
+        import os
+        
+        lib_dir = os.path.dirname(self.lhm_dll_path)
+        
+    
+        deps = [
+            "System.Memory.dll",
+            "System.Buffers.dll",
+            "System.Numerics.Vectors.dll",
+            "System.Runtime.CompilerServices.Unsafe.dll",
+            "HidSharp.dll",  # LHM also needs this one
+        ]
+        for dep in deps:
+            dep_path = os.path.join(lib_dir, dep)
+            if os.path.exists(dep_path):
+                clr.AddReference(dep_path)
+    
+        # Now load LHM itself
         clr.AddReference(self.lhm_dll_path)
         from LibreHardwareMonitor.Hardware import Computer
-
+        
         c = Computer()
         c.IsCpuEnabled = True
         c.IsGpuEnabled = True
         c.IsMemoryEnabled = True
         c.IsMotherboardEnabled = True
         c.IsControllerEnabled = True
-        c.IsStorageEnabled = True
+        c.IsStorageEnabled = False
         c.Open()
         self._computer = c
 

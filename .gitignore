@@ -1,0 +1,17 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# DLLs - users should download LibreHardwareMonitor themselves
+
+
+# VS Code / editors
+.vscode/
+.idea/
+
+# OS
+Thumbs.db
+.DS_Store

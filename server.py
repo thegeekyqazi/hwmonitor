@@ -5,6 +5,8 @@ import os
 import time
 import ctypes
 import sys
+import math
+from datetime import datetime
 from contextlib import asynccontextmanager
 from dataclasses import asdict
 from typing import Optional, List, Dict, Any
@@ -20,6 +22,15 @@ from detector import Detector, Anomaly
 
 from system_info import collect_system_info, collect_hardware_inventory
 from pattern_engine import compute_insights
+
+import psutil
+from pydantic import BaseModel
+
+from fastapi.responses import JSONResponse, PlainTextResponse, Response
+import json as json_module
+
+from diagnostics import build_diagnostic, render_markdown
+
 # ---------------------------------------------------------------------------
 # Paths
 # ---------------------------------------------------------------------------
@@ -119,23 +130,30 @@ ws_manager = WSManager()
 # Serialization helpers
 # ---------------------------------------------------------------------------
 
+def _safe_float(x):
+    """Replace NaN/inf with None so JSON serialization doesn't blow up."""
+    if x is None:
+        return None
+    if isinstance(x, float) and (math.isnan(x) or math.isinf(x)):
+        return None
+    return x
+
+
 def sample_to_dict(s: UnifiedSample) -> Dict[str, Any]:
     return {
-        "timestamp": s.timestamp,
-        "cpu_pct": s.cpu_pct,
-        "ram_pct": s.ram_pct,
-        "disk_read_mb_s": s.disk_read_mb_s,
-        "disk_write_mb_s": s.disk_write_mb_s,
-        "cpu_load_lhm": s.cpu_load_lhm,
-        "cpu_core_max": s.cpu_core_max,
-        "cpu_temp": s.cpu_temp,
-        "gpu_load": s.gpu_load,
-        "gpu_temp": s.gpu_temp,
-        "gpu_memory_used_mb": s.gpu_memory_used_mb,
-        "memory_load_lhm": s.memory_load_lhm,
-        "fan_rpm_max": s.fan_rpm_max,
-        # we don't ship top_processes/spawned/exited on every timeline point,
-        # they're large and the chart doesn't need them. served via /processes/at
+        "timestamp": _safe_float(s.timestamp),
+        "cpu_pct": _safe_float(s.cpu_pct),
+        "ram_pct": _safe_float(s.ram_pct),
+        "disk_read_mb_s": _safe_float(s.disk_read_mb_s),
+        "disk_write_mb_s": _safe_float(s.disk_write_mb_s),
+        "cpu_load_lhm": _safe_float(s.cpu_load_lhm),
+        "cpu_core_max": _safe_float(s.cpu_core_max),
+        "cpu_temp": _safe_float(s.cpu_temp),
+        "gpu_load": _safe_float(s.gpu_load),
+        "gpu_temp": _safe_float(s.gpu_temp),
+        "gpu_memory_used_mb": _safe_float(s.gpu_memory_used_mb),
+        "memory_load_lhm": _safe_float(s.memory_load_lhm),
+        "fan_rpm_max": _safe_float(s.fan_rpm_max),
     }
 
 
@@ -293,18 +311,25 @@ def _available_metrics(sample: Optional[UnifiedSample]) -> Dict[str, bool]:
     }
 
 
+
+
 @app.get("/api/timeline")
 def timeline(start: Optional[float] = None, end: Optional[float] = None,
              window_sec: Optional[float] = None):
     """
     Return downsampled samples for a time range.
-    If neither start/end nor window_sec is given, defaults to last 5 minutes.
+    Defaults to last 5 minutes if no params given.
     """
+    # Defensive: reject NaN/inf which break JSON serialization downstream
+    for name, val in [('start', start), ('end', end), ('window_sec', window_sec)]:
+        if val is not None and (math.isnan(val) or math.isinf(val)):
+            raise HTTPException(status_code=400, detail=f"{name} must be a finite number")
+
     agg = app.state.agg
     now = time.time()
 
     if start is None and end is None:
-        win = window_sec if window_sec else 300.0  # default last 5 min
+        win = window_sec if window_sec else 300.0
         start, end = now - win, now
     elif start is None:
         start = (end or now) - 300.0
@@ -319,7 +344,6 @@ def timeline(start: Optional[float] = None, end: Optional[float] = None,
         "count": len(samples),
         "samples": [sample_to_dict(s) for s in samples],
     }
-
 
 @app.get("/api/anomalies")
 def anomalies(limit: int = 100):
@@ -389,6 +413,119 @@ def insights(hours: Optional[float] = None):
     det = app.state.det
     return compute_insights(det.anomalies(), hours_window=hours)
 
+
+# ---- Process control ------------------------------------------------------
+
+# Kernel pseudo-processes that should never be killable
+PROTECTED_PIDS = {0, 4}
+
+# Critical Windows processes — killing these BSODs the machine. We block by name.
+PROTECTED_NAMES = {
+    "system", "system idle process", "registry", "memory compression",
+    "csrss.exe", "wininit.exe", "winlogon.exe", "services.exe", "lsass.exe",
+    "smss.exe", "dwm.exe", "fontdrvhost.exe", "secure system",
+}
+
+
+class KillRequest(BaseModel):
+    force: bool = False  # if True, use kill() instead of terminate()
+
+
+@app.post("/api/processes/{pid}/kill")
+def kill_process(pid: int, body: KillRequest = None):
+    """Terminate a process by PID. Refuses critical system processes."""
+    if pid in PROTECTED_PIDS:
+        raise HTTPException(status_code=403, detail="Cannot terminate kernel processes")
+
+    try:
+        proc = psutil.Process(pid)
+        name = proc.name().lower()
+    except psutil.NoSuchProcess:
+        raise HTTPException(status_code=404, detail=f"PID {pid} no longer exists")
+    except psutil.AccessDenied:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    if name in PROTECTED_NAMES:
+        raise HTTPException(
+            status_code=403,
+            detail=f"'{name}' is a protected system process and cannot be terminated"
+        )
+
+    force = body.force if body else False
+    try:
+        if force:
+            proc.kill()
+            method = "kill"
+        else:
+            proc.terminate()
+            method = "terminate"
+
+        # Wait briefly for the process to actually exit
+        try:
+            proc.wait(timeout=2)
+            still_running = False
+        except psutil.TimeoutExpired:
+            still_running = proc.is_running()
+
+        return {
+            "ok": True,
+            "pid": pid,
+            "name": name,
+            "method": method,
+            "still_running": still_running,
+        }
+    except psutil.AccessDenied:
+        raise HTTPException(status_code=403, detail="Access denied — try running as admin")
+    except psutil.NoSuchProcess:
+        return {"ok": True, "pid": pid, "name": name, "method": method, "still_running": False}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Kill failed: {e}")
+
+def _build_current_diagnostic():
+    """Helper: pull all the live data and build the diagnostic dict."""
+    agg = app.state.agg
+    det = app.state.det
+
+    # Recent samples — last hour or whatever's available
+    now = time.time()
+    recent_samples = agg.history(now - 3600, now)
+
+    return build_diagnostic(
+        system_info=app.state.system_info,
+        hardware_inventory=app.state.hardware_inventory,
+        anomalies=det.anomalies(),
+        recent_samples=recent_samples,
+        insights=compute_insights(det.anomalies()),
+        active_anomaly_metrics=[a.metric for a in det.active_anomalies()],
+        server_uptime_sec=now - app.state.started_at,
+    )
+
+
+@app.get("/api/diagnostic.json")
+def diagnostic_json():
+    """Full diagnostic as JSON — for programmatic consumption / LLM API."""
+    return _build_current_diagnostic()
+
+
+@app.get("/api/diagnostic.md")
+def diagnostic_md():
+    """Full diagnostic as Markdown — paste into ChatGPT/Claude/Gemini."""
+    diagnostic = _build_current_diagnostic()
+    md = render_markdown(diagnostic)
+    return PlainTextResponse(content=md, media_type="text/markdown; charset=utf-8")
+
+
+@app.get("/api/diagnostic.md/download")
+def diagnostic_md_download():
+    """Same as /diagnostic.md but with attachment header for browser download."""
+    diagnostic = _build_current_diagnostic()
+    md = render_markdown(diagnostic)
+    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    return Response(
+        content=md,
+        media_type="text/markdown; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="processlens-diagnostic-{timestamp}.md"'}
+    )
 # ---- WebSocket -------------------------------------------------------------
 
 @app.websocket("/ws/live")

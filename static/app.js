@@ -139,9 +139,9 @@ async function refreshChart() {
     }
 }
 function setupWindowControls() {
-    document.querySelectorAll('.btn-pill').forEach(btn => {
+    document.querySelectorAll('.btn-pill[data-window]').forEach(btn => {
         btn.addEventListener('click', async () => {
-            document.querySelectorAll('.btn-pill').forEach(b => b.classList.remove('active'));
+            document.querySelectorAll('.btn-pill[data-window]').forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
             currentWindowSec = parseInt(btn.dataset.window, 10);
             await refreshChart();
@@ -149,7 +149,6 @@ function setupWindowControls() {
         });
     });
 }
-
 // ---------- Anomalies ----------
 async function refreshAnomalies() {
     try {
@@ -338,13 +337,18 @@ function openSuspectModal(a) {
     const suspectsHtml = a.suspects.length === 0
         ? '<p style="color:var(--text-muted)">No suspects identified for this anomaly.</p>'
         : a.suspects.map(s => `
-            <div class="suspect-row">
-                <div>
+            <div class="suspect-row" data-pid="${s.pid}" data-name="${escapeHtml(s.name)}">
+                <div class="suspect-info">
                     <span class="suspect-name">${escapeHtml(s.name)}</span>
                     <span class="suspect-pid">PID ${s.pid}</span>
-                    ${s.flag ? `<span class="anomaly-suspect-row"><span class="flag">${s.flag}</span></span>` : ''}
+                    ${s.flag ? `<span class="suspect-flag">${escapeHtml(s.flag)}</span>` : ''}
                 </div>
-                <span class="suspect-delta">+${s.delta.toFixed(1)}</span>
+                <div class="suspect-actions">
+                    <span class="suspect-delta">+${s.delta.toFixed(1)}</span>
+                    <button class="btn-kill" data-pid="${s.pid}" data-name="${escapeHtml(s.name)}">
+                        Terminate
+                    </button>
+                </div>
             </div>
         `).join('');
 
@@ -370,9 +374,91 @@ function openSuspectModal(a) {
         <div class="modal-section-title">Suspect Processes</div>
         ${suspectsHtml}
     `;
+
+    // Wire up kill buttons
+    body.querySelectorAll('.btn-kill').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            const pid = parseInt(btn.dataset.pid, 10);
+            const name = btn.dataset.name;
+            await handleKill(pid, name, btn);
+        });
+    });
+
     document.getElementById('suspect-modal').classList.remove('hidden');
 }
 
+async function handleKill(pid, name, btn) {
+    const confirmed = confirm(`Terminate ${name} (PID ${pid})?\n\nThis will stop the process immediately.`);
+    if (!confirmed) return;
+
+    btn.disabled = true;
+    btn.textContent = 'Killing…';
+
+    try {
+        const r = await fetch(`/api/processes/${pid}/kill`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({force: false}),
+        });
+        const data = await r.json();
+
+        if (!r.ok) {
+            alert(`Failed: ${data.detail || 'unknown error'}`);
+            btn.disabled = false;
+            btn.textContent = 'Terminate';
+            return;
+        }
+
+        if (data.still_running) {
+            // Soft terminate didn't work, offer force
+            const force = confirm(`${name} did not exit gracefully. Force kill?`);
+            if (force) {
+                const r2 = await fetch(`/api/processes/${pid}/kill`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({force: true}),
+                });
+                const data2 = await r2.json();
+                if (!r2.ok) {
+                    alert(`Force kill failed: ${data2.detail}`);
+                    btn.disabled = false;
+                    btn.textContent = 'Terminate';
+                    return;
+                }
+            } else {
+                btn.disabled = false;
+                btn.textContent = 'Terminate';
+                return;
+            }
+        }
+
+        // Success — visually confirm
+        btn.textContent = '✓ Killed';
+        btn.classList.add('btn-killed');
+        const row = btn.closest('.suspect-row');
+        if (row) row.classList.add('suspect-killed');
+
+        showSuccessToast(`Terminated ${name}`);
+    } catch (e) {
+        alert(`Network error: ${e.message}`);
+        btn.disabled = false;
+        btn.textContent = 'Terminate';
+    }
+}
+
+function showSuccessToast(message) {
+    const div = document.createElement('div');
+    div.className = 'toast toast-success';
+    div.innerHTML = `<div class="toast-title">${escapeHtml(message)}</div>`;
+    document.getElementById('toast-container').appendChild(div);
+    setTimeout(() => {
+        div.style.transition = 'opacity 0.3s, transform 0.3s';
+        div.style.opacity = '0';
+        div.style.transform = 'translateX(20px)';
+        setTimeout(() => div.remove(), 300);
+    }, 3000);
+}
 function setupModalClose() {
     document.getElementById('modal-close').addEventListener('click', closeModal);
     document.querySelector('.modal-backdrop').addEventListener('click', closeModal);
@@ -721,4 +807,63 @@ function renderInsights(data) {
     }
 
     panel.innerHTML = html;
+}
+
+// ---------- Diagnostic Export ----------
+document.getElementById('btn-export').addEventListener('click', openExportModal);
+document.getElementById('export-close').addEventListener('click', closeExportModal);
+document.querySelector('#export-modal .modal-backdrop').addEventListener('click', closeExportModal);
+document.getElementById('export-copy').addEventListener('click', copyExportToClipboard);
+document.getElementById('export-download').addEventListener('click', () => {
+    window.location.href = '/api/diagnostic.md/download';
+});
+document.getElementById('export-json').addEventListener('click', async () => {
+    const r = await fetch('/api/diagnostic.json');
+    const data = await r.json();
+    const blob = new Blob([JSON.stringify(data, null, 2)], {type: 'application/json'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    a.download = `processlens-diagnostic-${ts}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+});
+
+let cachedExportMarkdown = '';
+
+async function openExportModal() {
+    const preview = document.getElementById('export-preview');
+    preview.textContent = 'Generating report…';
+    document.getElementById('export-modal').classList.remove('hidden');
+
+    try {
+        const r = await fetch('/api/diagnostic.md');
+        const text = await r.text();
+        cachedExportMarkdown = text;
+        preview.textContent = text;
+    } catch (e) {
+        preview.textContent = 'Failed to generate report.';
+    }
+}
+
+function closeExportModal() {
+    document.getElementById('export-modal').classList.add('hidden');
+}
+
+async function copyExportToClipboard() {
+    if (!cachedExportMarkdown) return;
+    try {
+        await navigator.clipboard.writeText(cachedExportMarkdown);
+        const btn = document.getElementById('export-copy');
+        const original = btn.textContent;
+        btn.textContent = '✓ Copied!';
+        btn.classList.add('btn-killed');
+        setTimeout(() => {
+            btn.textContent = original;
+            btn.classList.remove('btn-killed');
+        }, 1500);
+    } catch (e) {
+        alert('Copy failed. You can manually select and copy from the preview below.');
+    }
 }

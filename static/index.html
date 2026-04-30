@@ -32,6 +32,7 @@
             <span id="anomaly-count">0</span>
         </div>
         <button class="btn-pill" id="btn-system-info">System Info</button>
+<button class="btn-pill btn-export" id="btn-export">Export Report</button>
 </div>
     </header>
 
@@ -102,6 +103,20 @@
     <div class="modal-card modal-large">
         <button class="modal-close" id="system-info-close">×</button>
         <div id="system-info-body"></div>
+    </div>
+</div>
+<div id="export-modal" class="modal hidden">
+    <div class="modal-backdrop"></div>
+    <div class="modal-card modal-large">
+        <button class="modal-close" id="export-close">×</button>
+        <div class="modal-title">Diagnostic Report</div>
+        <div class="modal-subtitle">Full system report, ready to share with an LLM for diagnosis</div>
+        <div class="export-actions">
+            <button class="btn-pill btn-primary" id="export-copy">📋 Copy to Clipboard</button>
+            <button class="btn-pill" id="export-download">⬇ Download .md</button>
+            <button class="btn-pill" id="export-json">⬇ Download .json</button>
+        </div>
+        <div id="export-preview" class="export-preview"></div>
     </div>
 </div>
 

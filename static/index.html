@@ -15,23 +15,24 @@
             <span class="tagline">System Anomaly Forensics</span>
         </div>
         <div class="status-bar">
-            <div class="status-item">
-                <span class="status-dot" id="ws-status-dot"></span>
-                <span id="ws-status-text">Connecting…</span>
-            </div>
-            <div class="status-item">
-                <span class="status-label">Uptime</span>
-                <span id="uptime">—</span>
-            </div>
-            <div class="status-item">
-                <span class="status-label">Samples</span>
-                <span id="sample-count">—</span>
-            </div>
-            <div class="status-item">
-                <span class="status-label">Anomalies</span>
-                <span id="anomaly-count">0</span>
-            </div>
+        <div class="status-item">
+            <span class="status-dot" id="ws-status-dot"></span>
+            <span id="ws-status-text">Connecting…</span>
         </div>
+        <div class="status-item">
+            <span class="status-label">Uptime</span>
+            <span id="uptime">—</span>
+        </div>
+        <div class="status-item">
+            <span class="status-label">Samples</span>
+            <span id="sample-count">—</span>
+        </div>
+        <div class="status-item">
+            <span class="status-label">Anomalies</span>
+            <span id="anomaly-count">0</span>
+        </div>
+        <button class="btn-pill" id="btn-system-info">System Info</button>
+</div>
     </header>
 
     <main class="dashboard">
@@ -52,6 +53,9 @@
             <div class="panel-header">
                 <h2>Detected Anomalies</h2>
                 <span class="hint">Click a card to inspect</span>
+            </div>
+            <div class="insights-panel" id="insights-panel">
+                <!-- Populated by JS -->
             </div>
             <div id="anomaly-list" class="anomaly-list">
                 <div class="empty-state">
@@ -93,7 +97,15 @@
             <div id="modal-body"></div>
         </div>
     </div>
+    <div id="system-info-modal" class="modal hidden">
+    <div class="modal-backdrop"></div>
+    <div class="modal-card modal-large">
+        <button class="modal-close" id="system-info-close">×</button>
+        <div id="system-info-body"></div>
+    </div>
+</div>
 
     <script src="/static/app.js"></script>
+
 </body>
 </html>

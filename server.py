@@ -18,6 +18,8 @@ from hardware_engine import HardwareEngine
 from aggregator import MetricsAggregator, UnifiedSample
 from detector import Detector, Anomaly
 
+from system_info import collect_system_info, collect_hardware_inventory
+from pattern_engine import compute_insights
 # ---------------------------------------------------------------------------
 # Paths
 # ---------------------------------------------------------------------------
@@ -179,7 +181,10 @@ async def lifespan(app: FastAPI):
     # Give the engines a moment so the aggregator has data to read on first tick
     await asyncio.sleep(1.5)
     agg.start()
-
+    # Cache static system info — collected once at startup
+    print("[server] Collecting system info & hardware inventory...")
+    app.state.system_info = collect_system_info(hw)
+    app.state.hardware_inventory = collect_hardware_inventory(hw)
     # Detector configured for hackathon-demo responsiveness:
     # short baseline window, low minimum samples, short cooldown
     det = Detector(
@@ -368,6 +373,21 @@ def processes_now():
         "processes": s.top_processes,
     }
 
+@app.get("/api/system_info")
+def system_info():
+    return app.state.system_info
+
+
+@app.get("/api/hardware_inventory")
+def hardware_inventory():
+    return app.state.hardware_inventory
+
+
+@app.get("/api/insights")
+def insights(hours: Optional[float] = None):
+    """Pattern-engine insights over the anomaly history."""
+    det = app.state.det
+    return compute_insights(det.anomalies(), hours_window=hours)
 
 # ---- WebSocket -------------------------------------------------------------
 

@@ -164,12 +164,14 @@ h1, h2 { font-weight: 600; letter-spacing: -0.01em; }
 
 /* ---------- Anomaly cards ---------- */
 .anomaly-list {
+    
     flex: 1;
     overflow-y: auto;
     padding: 12px;
     display: flex;
     flex-direction: column;
     gap: 10px;
+    min-height: 0;
 }
 .anomaly-list::-webkit-scrollbar { width: 8px; }
 .anomaly-list::-webkit-scrollbar-thumb { background: var(--panel-border); border-radius: 4px; }
@@ -394,4 +396,181 @@ h1, h2 { font-weight: 600; letter-spacing: -0.01em; }
     color: var(--danger);
     font-weight: 600;
     font-family: ui-monospace, "SF Mono", Menlo, monospace;
+}
+/* ---------- System Info modal ---------- */
+.modal-large { width: min(800px, 92vw); }
+
+.system-info-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 24px;
+}
+.system-info-card {
+    background: var(--bg);
+    border-radius: var(--radius-sm);
+    padding: 14px 16px;
+}
+.system-info-card-label {
+    font-size: 11px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-bottom: 4px;
+}
+.system-info-card-value {
+    font-size: 14px;
+    font-weight: 500;
+    word-break: break-word;
+}
+.system-info-card-sub {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-top: 2px;
+}
+
+/* ---------- Hardware sections (collapsible) ---------- */
+.hardware-section {
+    margin-bottom: 8px;
+    border: 1px solid var(--panel-border);
+    border-radius: var(--radius-sm);
+    background: white;
+    overflow: hidden;
+}
+
+.hardware-section[open] {
+    box-shadow: var(--shadow-sm);
+}
+
+.hardware-section summary {
+    list-style: none;
+    cursor: pointer;
+    padding: 10px 14px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: var(--bg);
+    border-bottom: 1px solid transparent;
+    user-select: none;
+    transition: background 0.15s;
+}
+.hardware-section summary::-webkit-details-marker { display: none; }
+.hardware-section summary::before {
+    content: "▸";
+    margin-right: 10px;
+    color: var(--text-muted);
+    font-size: 10px;
+    transition: transform 0.15s;
+    display: inline-block;
+}
+.hardware-section[open] summary::before {
+    transform: rotate(90deg);
+}
+.hardware-section[open] summary {
+    border-bottom-color: var(--panel-border);
+}
+.hardware-section summary:hover {
+    background: #eef2f7;
+}
+
+.hardware-section-title-text {
+    font-size: 12px;
+    color: var(--text-primary);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    font-weight: 600;
+    flex: 1;
+}
+
+.hardware-section-count {
+    background: var(--accent-soft);
+    color: var(--accent);
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+}
+
+.hardware-section-body {
+    padding: 8px 14px 12px;
+}
+
+.hardware-item {
+    padding: 8px 0;
+    border-bottom: 1px solid var(--panel-border);
+    font-size: 13px;
+}
+.hardware-item:last-child { border-bottom: none; }
+.hardware-item-name {
+    font-weight: 500;
+    margin-bottom: 3px;
+    color: var(--text-primary);
+}
+.hardware-item-name.hardware-warning {
+    color: var(--danger);
+}
+.hardware-item-detail {
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+    line-height: 1.4;
+}
+
+/* ---------- Insights panel ---------- */
+.insights-panel {
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--panel-border);
+    flex-shrink: 0;
+    background: linear-gradient(to bottom, #fafbfd, var(--panel-bg));
+    max-height: 280px;
+    overflow-y: auto;
+}
+.insights-panel:empty { display: none; }
+
+.insights-panel::-webkit-scrollbar { width: 6px; }
+.insights-panel::-webkit-scrollbar-thumb { background: var(--panel-border); border-radius: 3px; }
+
+.insight-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 12px;
+    padding: 3px 4px;
+    color: var(--text-secondary);
+}
+.insight-row .label { color: var(--text-muted); font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; }
+.insight-row .value { font-weight: 500; color: var(--text-primary); font-variant-numeric: tabular-nums; }
+.insight-section {
+    margin-top: 8px;
+}
+.insight-section-title {
+    font-size: 10px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-bottom: 4px;
+    font-weight: 600;
+}
+.insight-bar-row {
+    display: grid;
+    grid-template-columns: 1fr 30px;
+    gap: 8px;
+    align-items: center;
+    font-size: 12px;
+    padding: 1px 0;
+}
+.insight-bar-row .name { font-weight: 500; color: var(--text-primary); }
+.insight-bar-row .count { text-align: right; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.insight-bar-fill {
+    grid-column: 1 / span 2;
+    height: 2px;
+    background: var(--panel-border);
+    border-radius: 1px;
+    overflow: hidden;
+    margin-bottom: 3px;
+}
+.insight-bar-fill > div {
+    height: 100%;
+    background: var(--accent);
 }

@@ -22,6 +22,8 @@ window.addEventListener('DOMContentLoaded', async () => {
     setInterval(refreshChart, 2000);
     setInterval(refreshHealth, 3000);
     setInterval(refreshProcesses, 2000);
+    setInterval(refreshInsights, 5000);
+    refreshInsights();
     refreshAnomalies();
     refreshProcesses();
 });
@@ -212,21 +214,27 @@ function anomalyCardHTML(a) {
         </div>`;
 }
 
-function renderAnomalyBands() {
-    if (!chart) return;
-    // Build shape rectangles for each anomaly's time window
-    const shapes = allAnomalies.map(a => ({
+function buildAnomalyShapes() {
+    return allAnomalies.map(a => ({
         type: 'rect',
         xref: 'x',
         yref: 'paper',
         x0: new Date(a.started_at * 1000),
         x1: new Date((a.ended_at || Date.now() / 1000) * 1000),
         y0: 0, y1: 1,
-        fillcolor: 'rgba(232, 54, 79, 0.10)',
-        line: { width: 0 },
+        fillcolor: 'rgba(232, 54, 79, 0.08)',
+        line: {
+            color: 'rgba(232, 54, 79, 0.5)',
+            width: 1,
+        },
         layer: 'below',
+        opacity: 1,
     }));
-    Plotly.relayout('chart', { shapes });
+}
+
+function renderAnomalyBands() {
+    if (!chart) return;
+    Plotly.relayout('chart', { shapes: buildAnomalyShapes() });
 }
 
 function zoomToAnomaly(a) {
@@ -289,6 +297,7 @@ function handleAnomalyStarted(anomaly) {
     }, 50);
 
     showToast(anomaly);
+    refreshInsights;
 }
 
 function handleAnomalyEnded(anomaly) {
@@ -298,6 +307,7 @@ function handleAnomalyEnded(anomaly) {
     }
     renderAnomalyList();
     renderAnomalyBands();
+    refreshInsights;
 }
 
 function showToast(anomaly) {
@@ -423,4 +433,292 @@ function escapeHtml(s) {
     return String(s).replace(/[&<>"']/g, c => ({
         '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
     }[c]));
+}
+
+// ---------- System Info modal ----------
+let systemInfoCache = null;
+let hardwareInventoryCache = null;
+
+document.getElementById('btn-system-info').addEventListener('click', openSystemInfoModal);
+document.getElementById('system-info-close').addEventListener('click', closeSystemInfoModal);
+document.querySelector('#system-info-modal .modal-backdrop').addEventListener('click', closeSystemInfoModal);
+
+async function openSystemInfoModal() {
+    const body = document.getElementById('system-info-body');
+    body.innerHTML = '<div class="loading">Loading system info…</div>';
+    document.getElementById('system-info-modal').classList.remove('hidden');
+
+    if (!systemInfoCache || !hardwareInventoryCache) {
+        try {
+            const [si, hi] = await Promise.all([
+                fetch('/api/system_info').then(r => r.json()),
+                fetch('/api/hardware_inventory').then(r => r.json()),
+            ]);
+            systemInfoCache = si;
+            hardwareInventoryCache = hi;
+        } catch (e) {
+            body.innerHTML = '<p>Failed to load system info.</p>';
+            return;
+        }
+    }
+    body.innerHTML = renderSystemInfo(systemInfoCache, hardwareInventoryCache);
+}
+
+function closeSystemInfoModal() {
+    document.getElementById('system-info-modal').classList.add('hidden');
+}
+
+function renderSystemInfo(si, hi) {
+    const cards = [
+        { label: 'Hostname', value: si.hostname },
+        { label: 'OS', value: `${si.os.system} ${si.os.release}`, sub: si.os.version },
+        { label: 'CPU', value: si.cpu.model, sub: `${si.cpu.physical_cores} cores · ${si.cpu.logical_cores} threads` },
+        { label: 'Memory', value: `${si.memory.total_gb} GB total`, sub: `${si.memory.available_gb} GB available` },
+    ];
+
+    let html = '<div class="modal-title">System Information</div>';
+    html += '<div class="modal-subtitle">Detailed hardware and OS inventory for this machine</div>';
+
+    html += '<div class="system-info-grid">';
+    for (const c of cards) {
+        html += `<div class="system-info-card">
+            <div class="system-info-card-label">${escapeHtml(c.label)}</div>
+            <div class="system-info-card-value">${escapeHtml(c.value || '—')}</div>
+            ${c.sub ? `<div class="system-info-card-sub">${escapeHtml(c.sub)}</div>` : ''}
+        </div>`;
+    }
+    html += '</div>';
+
+    // Each section is now a <details> element so it's collapsible
+    if (hi.processors?.length) {
+        html += sectionHTML('Processors', hi.processors.length, hi.processors.map(p => ({
+            name: p.name,
+            details: [
+                p.physical_cores && `${p.physical_cores} cores`,
+                p.logical_cores && `${p.logical_cores} threads`,
+                p.architecture,
+                p.max_clock_mhz && `${p.max_clock_mhz} MHz`,
+                p.l3_cache_kb && `L3 ${(p.l3_cache_kb/1024).toFixed(1)} MB`,
+                p.virtualization_enabled !== undefined && (p.virtualization_enabled ? 'VT-x/AMD-V' : 'Virt disabled'),
+                p.socket && `Socket: ${p.socket}`,
+            ],
+        })), true);
+    }
+
+    if (hi.memory_modules?.length) {
+        html += sectionHTML('Memory', hi.memory_modules.length, hi.memory_modules.map(m => ({
+            name: m.slot ? `${m.slot} — ${m.manufacturer}` : m.manufacturer,
+            details: [
+                m.capacity_gb && `${m.capacity_gb} GB`,
+                m.memory_type,
+                m.configured_speed_mhz && `${m.configured_speed_mhz} MHz (rated ${m.speed_mhz})`,
+                m.part_number,
+                m.form_factor,
+                m.voltage_v && `${m.voltage_v} V`,
+            ],
+        })));
+    }
+
+    if (hi.graphics?.length) {
+        html += sectionHTML('Graphics', hi.graphics.length, hi.graphics.map(g => ({
+            name: g.name,
+            details: [
+                g.memory_mb && `${g.memory_mb} MB VRAM`,
+                g.current_resolution && `${g.current_resolution} @ ${g.current_refresh_hz}Hz`,
+                g.driver_version && `Driver ${g.driver_version}`,
+                g.driver_date,
+                g.video_processor,
+            ],
+        })));
+    }
+
+    if (hi.monitors?.length) {
+        html += sectionHTML('Monitors', hi.monitors.length, hi.monitors.map(m => ({
+            name: `${m.manufacturer} ${m.user_friendly_name || m.product_code || ''}`.trim(),
+            details: [
+                m.product_code && `Model code: ${m.product_code}`,
+                m.serial && `S/N: ${m.serial}`,
+                m.year_of_manufacture && `Manufactured ${m.year_of_manufacture}` + (m.week_of_manufacture ? ` wk${m.week_of_manufacture}` : ''),
+            ],
+        })));
+    }
+
+    if (hi.storage) {
+        const phys = hi.storage.physical || [];
+        if (phys.length) {
+            html += sectionHTML('Storage Drives', phys.length, phys.map(d => {
+                const isFailing = d.smart_predicted_failure === true;
+                return {
+                    name: d.model + (isFailing ? ' ⚠ FAILING' : ''),
+                    nameClass: isFailing ? 'hardware-warning' : '',
+                    details: [
+                        d.size_gb && `${d.size_gb} GB`,
+                        d.media_type,
+                        d.interface,
+                        d.firmware_revision && `Firmware ${d.firmware_revision}`,
+                        d.serial && `S/N: ${d.serial}`,
+                        d.smart_status && `SMART: ${d.smart_status}`,
+                    ],
+                };
+            }));
+        }
+        const parts = hi.storage.partitions || [];
+        if (parts.length) {
+            html += sectionHTML('Partitions', parts.length, parts.map(p => ({
+                name: `${p.device} → ${p.mountpoint}`,
+                details: [
+                    `${p.used_gb} / ${p.total_gb} GB used (${p.percent_used}%)`,
+                    p.fstype,
+                ],
+            })));
+        }
+    }
+
+    if (hi.audio?.length) {
+        html += sectionHTML('Audio Devices', hi.audio.length, hi.audio.map(a => ({
+            name: a.name,
+            details: [a.manufacturer, a.category, a.status].filter(Boolean),
+        })));
+    }
+
+    if (hi.peripherals) {
+        const allPeripherals = [
+            ...(hi.peripherals.pointing || []).map(p => ({...p, kind: p.type})),
+            ...(hi.peripherals.keyboards || []).map(p => ({...p, kind: 'Keyboard'})),
+            ...(hi.peripherals.cameras || []).map(p => ({...p, kind: 'Camera'})),
+            ...(hi.peripherals.other || []).map(p => ({...p, kind: p.category})),
+        ];
+        if (allPeripherals.length) {
+            html += sectionHTML('Peripherals', allPeripherals.length, allPeripherals.map(p => ({
+                name: p.name,
+                details: [p.kind, p.manufacturer, p.buttons && `${p.buttons} buttons`].filter(Boolean),
+            })));
+        }
+    }
+
+    if (hi.battery) {
+        const b = hi.battery;
+        html += sectionHTML('Battery', 1, [{
+            name: b.name,
+            details: [
+                b.manufacturer,
+                b.chemistry,
+                b.estimated_charge_pct != null && `Charge: ${b.estimated_charge_pct}%`,
+                b.health_percent != null && `Health: ${b.health_percent}%${b.wear_percent > 20 ? ' ⚠' : ''}`,
+                b.design_capacity_mwh && b.full_charge_capacity_mwh && `${b.full_charge_capacity_mwh} / ${b.design_capacity_mwh} mWh`,
+                b.status,
+            ].filter(Boolean),
+        }]);
+    }
+
+    if (hi.network?.length) {
+        const upAdapters = hi.network.filter(n => n.is_up);
+        if (upAdapters.length) {
+            html += sectionHTML('Network Adapters', upAdapters.length, upAdapters.map(n => ({
+                name: `${n.name}${n.product ? ` (${n.product})` : ''}`,
+                details: [
+                    n.speed_mbps && `${n.speed_mbps} Mbps`,
+                    n.manufacturer,
+                    n.mac,
+                    ...n.addresses.map(a => `${a.family === 'AF_INET' ? 'IPv4' : 'IPv6'}: ${a.address}`),
+                ].filter(Boolean),
+            })));
+        }
+    }
+
+    if (hi.motherboard) {
+        const m = hi.motherboard;
+        html += sectionHTML('Motherboard / BIOS', 1, [{
+            name: `${m.system_manufacturer || m.manufacturer} ${m.system_model || m.product}`.trim(),
+            details: [
+                m.bios_version && `BIOS ${m.bios_version}`,
+                m.bios_release_date && `BIOS released ${m.bios_release_date}`,
+                m.bios_manufacturer,
+                m.serial && `Board S/N: ${m.serial}`,
+            ].filter(Boolean),
+        }]);
+    }
+
+    return html;
+}
+
+function sectionHTML(title, count, items, expanded = false) {
+    if (!items.length) return '';
+    let html = `<details class="hardware-section" ${expanded ? 'open' : ''}>
+        <summary class="hardware-section-title">
+            <span class="hardware-section-title-text">${escapeHtml(title)}</span>
+            <span class="hardware-section-count">${count}</span>
+        </summary>
+        <div class="hardware-section-body">`;
+    for (const item of items) {
+        const details = (item.details || []).filter(d => d).map(d => escapeHtml(String(d))).join(' · ');
+        html += `<div class="hardware-item">
+            <div class="hardware-item-name ${item.nameClass || ''}">${escapeHtml(item.name || '—')}</div>
+            ${details ? `<div class="hardware-item-detail">${details}</div>` : ''}
+        </div>`;
+    }
+    html += '</div></details>';
+    return html;
+}
+
+// ---------- Pattern engine / Insights ----------
+async function refreshInsights() {
+    try {
+        const r = await fetch('/api/insights');
+        const data = await r.json();
+        renderInsights(data);
+    } catch (e) { /* silent */ }
+}
+
+function renderInsights(data) {
+    const panel = document.getElementById('insights-panel');
+    if (!panel) return;
+    if (data.total === 0) {
+        panel.innerHTML = '';
+        return;
+    }
+
+    let html = '<div class="insight-section-title">Insights</div>';
+
+    html += `<div class="insight-row">
+        <span class="label">Total anomalies</span>
+        <span class="value">${data.total}${data.active_now ? ` · ${data.active_now} active` : ''}</span>
+    </div>`;
+
+    if (data.avg_duration_sec) {
+        html += `<div class="insight-row">
+            <span class="label">Avg duration</span>
+            <span class="value">${formatDuration(data.avg_duration_sec)}</span>
+        </div>`;
+    }
+
+    if (data.repeat_offenders?.length) {
+        const top3 = data.repeat_offenders.slice(0, 3);
+        const max = Math.max(...top3.map(o => o.anomaly_count));
+        html += '<div class="insight-section"><div class="insight-section-title">Repeat offenders</div>';
+        for (const o of top3) {
+            const pct = (o.anomaly_count / max) * 100;
+            html += `<div class="insight-bar-row">
+                <span class="name">${escapeHtml(o.name)}</span>
+                <span class="count">${o.anomaly_count}</span>
+            </div>
+            <div class="insight-bar-fill"><div style="width:${pct}%"></div></div>`;
+        }
+        html += '</div>';
+    }
+
+    if (data.metric_distribution?.length) {
+        const topMetrics = data.metric_distribution.slice(0, 4);
+        html += '<div class="insight-section"><div class="insight-section-title">By metric</div>';
+        for (const m of topMetrics) {
+            html += `<div class="insight-bar-row">
+                <span class="name">${escapeHtml(m.label)}</span>
+                <span class="count">${m.count}</span>
+            </div>
+            <div class="insight-bar-fill"><div style="width:${m.percent}%"></div></div>`;
+        }
+        html += '</div>';
+    }
+
+    panel.innerHTML = html;
 }

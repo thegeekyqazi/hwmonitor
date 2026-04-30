@@ -581,8 +581,8 @@ def diagnostic_md_download():
 class SettingsUpdate(BaseModel):
     anthropic_api_key: Optional[str] = None
     openai_api_key: Optional[str] = None
+    gemini_api_key: Optional[str] = None
     preferred_provider: Optional[str] = None
-
 
 @app.get("/api/settings/status")
 def get_settings_status():
@@ -592,11 +592,9 @@ def get_settings_status():
 
 @app.post("/api/settings")
 def update_settings(body: SettingsUpdate):
-    """Update LLM settings. Only fields explicitly provided are updated."""
     current = load_settings()
 
     if body.anthropic_api_key is not None:
-        # Empty string = clear
         if body.anthropic_api_key == "":
             current.pop("anthropic_api_key", None)
         else:
@@ -608,14 +606,19 @@ def update_settings(body: SettingsUpdate):
         else:
             current["openai_api_key"] = body.openai_api_key
 
+    if body.gemini_api_key is not None:
+        if body.gemini_api_key == "":
+            current.pop("gemini_api_key", None)
+        else:
+            current["gemini_api_key"] = body.gemini_api_key
+
     if body.preferred_provider is not None:
-        if body.preferred_provider not in ("claude", "openai"):
-            raise HTTPException(status_code=400, detail="Provider must be 'claude' or 'openai'")
+        if body.preferred_provider not in ("claude", "openai", "gemini"):
+            raise HTTPException(status_code=400, detail="Provider must be 'claude', 'openai', or 'gemini'")
         current["preferred_provider"] = body.preferred_provider
 
     save_settings(current)
     return settings_status()
-
 
 class DiagnoseRequest(BaseModel):
     provider: Optional[str] = None  # if None, use preferred from settings
@@ -624,11 +627,9 @@ class DiagnoseRequest(BaseModel):
 
 @app.post("/api/diagnose")
 def diagnose_with_llm(body: DiagnoseRequest):
-    """Generate a diagnostic report and send it to the configured LLM."""
     settings = load_settings()
     provider = body.provider or settings.get("preferred_provider", "claude")
 
-    # Resolve API key
     if provider == "claude":
         api_key = settings.get("anthropic_api_key")
         if not api_key:
@@ -637,15 +638,17 @@ def diagnose_with_llm(body: DiagnoseRequest):
         api_key = settings.get("openai_api_key")
         if not api_key:
             raise HTTPException(status_code=400, detail="OpenAI API key not configured. Set it in Settings.")
+    elif provider == "gemini":
+        api_key = settings.get("gemini_api_key")
+        if not api_key:
+            raise HTTPException(status_code=400, detail="Gemini API key not configured. Set it in Settings.")
     else:
         raise HTTPException(status_code=400, detail=f"Unknown provider: {provider}")
 
-    # Build diagnostic report
     diagnostic = _build_current_diagnostic()
     from diagnostics import render_markdown
     md_report = render_markdown(diagnostic)
 
-    # Call LLM
     try:
         result = diagnose(md_report, provider=provider, api_key=api_key, model=body.model)
     except Exception as e:

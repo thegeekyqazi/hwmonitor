@@ -5,3 +5,4 @@ pythonnet>=3.0
 wmi 
 anthropic
 openai
+google-generativeai

@@ -879,28 +879,36 @@ async function openSettingsModal() {
     document.getElementById('settings-modal').classList.remove('hidden');
     document.getElementById('settings-claude-key').value = '';
     document.getElementById('settings-openai-key').value = '';
+    document.getElementById('settings-gemini-key').value = '';
 
     const r = await fetch('/api/settings/status');
     const status = await r.json();
 
-    const cs = document.getElementById('settings-claude-status');
-    cs.textContent = status.claude_configured ? '✓ Configured' : 'Not configured';
-    cs.className = 'settings-status ' + (status.claude_configured ? 'configured' : '');
-    document.getElementById('settings-claude-key').placeholder = status.claude_configured
-        ? '••••••• (leave blank to keep, or enter new to replace)'
-        : 'sk-ant-...';
+    const renderStatus = (cfgKey, statusEl, inputEl, placeholder) => {
+        if (status[cfgKey]) {
+            statusEl.textContent = '✓ Configured';
+            statusEl.className = 'settings-status configured';
+            inputEl.placeholder = '••••••• (leave blank to keep, or enter new to replace)';
+        } else {
+            statusEl.textContent = 'Not configured';
+            statusEl.className = 'settings-status';
+            inputEl.placeholder = placeholder;
+        }
+    };
 
-    const os = document.getElementById('settings-openai-status');
-    os.textContent = status.openai_configured ? '✓ Configured' : 'Not configured';
-    os.className = 'settings-status ' + (status.openai_configured ? 'configured' : '');
-    document.getElementById('settings-openai-key').placeholder = status.openai_configured
-        ? '••••••• (leave blank to keep, or enter new to replace)'
-        : 'sk-...';
+    renderStatus('claude_configured',
+        document.getElementById('settings-claude-status'),
+        document.getElementById('settings-claude-key'), 'sk-ant-...');
+    renderStatus('openai_configured',
+        document.getElementById('settings-openai-status'),
+        document.getElementById('settings-openai-key'), 'sk-...');
+    renderStatus('gemini_configured',
+        document.getElementById('settings-gemini-status'),
+        document.getElementById('settings-gemini-key'), 'AIza...');
 
     const provider = status.preferred_provider || 'claude';
     document.getElementById('settings-provider-' + provider).checked = true;
 }
-
 function closeSettingsModal() {
     document.getElementById('settings-modal').classList.add('hidden');
 }
@@ -908,11 +916,13 @@ function closeSettingsModal() {
 async function saveSettings() {
     const claudeKey = document.getElementById('settings-claude-key').value;
     const openaiKey = document.getElementById('settings-openai-key').value;
+    const geminiKey = document.getElementById('settings-gemini-key').value;
     const provider = document.querySelector('input[name="provider"]:checked')?.value;
 
     const body = {};
     if (claudeKey) body.anthropic_api_key = claudeKey;
     if (openaiKey) body.openai_api_key = openaiKey;
+    if (geminiKey) body.gemini_api_key = geminiKey;
     if (provider) body.preferred_provider = provider;
 
     try {

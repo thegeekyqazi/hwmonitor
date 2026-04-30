@@ -49,5 +49,6 @@ def settings_status() -> Dict[str, bool]:
     return {
         "claude_configured": bool(s.get("anthropic_api_key")),
         "openai_configured": bool(s.get("openai_api_key")),
+        "gemini_configured": bool(s.get("gemini_api_key")),
         "preferred_provider": s.get("preferred_provider", "claude"),
     }

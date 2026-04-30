@@ -141,10 +141,18 @@
         </div>
 
         <div class="settings-section">
+            <label class="settings-label">Google Gemini API Key</label>
+            <input type="password" id="settings-gemini-key" class="settings-input" placeholder="AIza..." autocomplete="off">
+            <div class="settings-status" id="settings-gemini-status"></div>
+            <div class="settings-hint">Free tier available at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com</a></div>
+        </div>
+
+        <div class="settings-section">
             <label class="settings-label">Preferred Provider (default for "Diagnose with AI")</label>
             <div class="settings-radios">
                 <label><input type="radio" name="provider" value="claude" id="settings-provider-claude"> Claude</label>
                 <label><input type="radio" name="provider" value="openai" id="settings-provider-openai"> OpenAI</label>
+                <label><input type="radio" name="provider" value="gemini" id="settings-provider-gemini"> Gemini</label>
             </div>
         </div>
 

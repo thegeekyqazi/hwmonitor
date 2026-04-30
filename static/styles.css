@@ -841,3 +841,15 @@ h1, h2 { font-weight: 600; letter-spacing: -0.01em; }
     line-height: 1.7;
     color: var(--text-secondary);
 }
+.settings-hint {
+    margin-top: 4px;
+    font-size: 11px;
+    color: var(--text-muted);
+}
+.settings-hint a {
+    color: var(--accent);
+    text-decoration: none;
+}
+.settings-hint a:hover {
+    text-decoration: underline;
+}

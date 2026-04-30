@@ -105,6 +105,35 @@ def diagnose_with_openai(markdown_report: str, api_key: str, model: str = "gpt-4
     text = response.choices[0].message.content
     return _parse_json_response(text, provider="openai")
 
+def diagnose_with_gemini(markdown_report: str, api_key: str, model: str = "gemini-2.0-flash") -> Dict[str, Any]:
+    """Call Google's Gemini API. Returns parsed JSON diagnosis."""
+    try:
+        import google.generativeai as genai
+    except ImportError:
+        raise RuntimeError("google-generativeai package not installed. Run: pip install google-generativeai")
+
+    genai.configure(api_key=api_key)
+
+    # Gemini supports structured output via response_mime_type
+    gen_model = genai.GenerativeModel(
+        model_name=model,
+        system_instruction=SYSTEM_PROMPT,
+        generation_config={
+            "response_mime_type": "application/json",
+            "max_output_tokens": 4096,
+            "temperature": 0.4,
+        }
+    )
+
+    response = gen_model.generate_content(
+        f"Here is the diagnostic report:\n\n{markdown_report}\n\nProvide your diagnosis as JSON."
+    )
+
+    # Gemini returns text on .text attribute
+    if not response.candidates or not response.text:
+        raise RuntimeError("Gemini returned empty response")
+
+    return _parse_json_response(response.text, provider="gemini")
 
 def _parse_json_response(text: str, provider: str) -> Dict[str, Any]:
     """Parse JSON, handling stray markdown fences if model included them."""
@@ -136,8 +165,10 @@ def diagnose(markdown_report: str, provider: str, api_key: str, model: Optional[
         result = diagnose_with_claude(markdown_report, api_key, model or "claude-sonnet-4-5")
     elif provider == "openai":
         result = diagnose_with_openai(markdown_report, api_key, model or "gpt-4o-mini")
+    elif provider == "gemini":
+        result = diagnose_with_gemini(markdown_report, api_key, model or "gemini-2.0-flash")
     else:
-        raise ValueError(f"Unknown provider: {provider}. Use 'claude' or 'openai'.")
+        raise ValueError(f"Unknown provider: {provider}. Use 'claude', 'openai', or 'gemini'.")
 
     return {
         "provider": provider,

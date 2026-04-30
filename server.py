@@ -28,9 +28,41 @@ STATIC_DIR = os.path.join(BASE_DIR, "static")
 INDEX_HTML = os.path.join(STATIC_DIR, "index.html")
 
 
+
 # ---------------------------------------------------------------------------
-# Admin check (warn, don't block)
+# Admin elevation — auto-relaunch via UAC if not already elevated
 # ---------------------------------------------------------------------------
+
+def _ensure_admin():
+    """If we're not running as admin, relaunch the same script elevated and exit."""
+    try:
+        if ctypes.windll.shell32.IsUserAnAdmin():
+            return  # already admin, all good
+    except Exception:
+        return  # not on Windows or unable to check; just proceed
+
+    # Re-run the script with the "runas" verb (triggers UAC).
+    # We pass the same arguments so any future flags are preserved.
+    params = " ".join(f'"{a}"' for a in sys.argv)
+    try:
+        ret = ctypes.windll.shell32.ShellExecuteW(
+            None,           # parent hwnd
+            "runas",        # verb — this is what triggers UAC
+            sys.executable, # the python.exe to launch
+            params,         # arguments (path to this script + any args)
+            None,           # working directory
+            1               # SW_SHOWNORMAL
+        )
+        if ret <= 32:  # ShellExecuteW returns >32 on success
+            print("[server] UAC elevation was cancelled or failed. Exiting.")
+            sys.exit(1)
+    except Exception as e:
+        print(f"[server] Failed to elevate: {e}")
+        sys.exit(1)
+
+    # Original (non-admin) process exits — the elevated one takes over
+    sys.exit(0)
+
 
 def is_admin() -> bool:
     try:
@@ -38,6 +70,8 @@ def is_admin() -> bool:
     except Exception:
         return False
 
+
+_ensure_admin()
 
 # ---------------------------------------------------------------------------
 # WebSocket connection manager

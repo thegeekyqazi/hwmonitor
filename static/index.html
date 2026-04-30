@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ProcessLens — System Anomaly Forensics</title>
+    <link rel="stylesheet" href="/static/styles.css">
+    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+</head>
+<body>
+    <header class="app-header">
+        <div class="brand">
+            <div class="logo-mark"></div>
+            <h1>ProcessLens</h1>
+            <span class="tagline">System Anomaly Forensics</span>
+        </div>
+        <div class="status-bar">
+            <div class="status-item">
+                <span class="status-dot" id="ws-status-dot"></span>
+                <span id="ws-status-text">Connecting…</span>
+            </div>
+            <div class="status-item">
+                <span class="status-label">Uptime</span>
+                <span id="uptime">—</span>
+            </div>
+            <div class="status-item">
+                <span class="status-label">Samples</span>
+                <span id="sample-count">—</span>
+            </div>
+            <div class="status-item">
+                <span class="status-label">Anomalies</span>
+                <span id="anomaly-count">0</span>
+            </div>
+        </div>
+    </header>
+
+    <main class="dashboard">
+        <section class="panel chart-panel">
+            <div class="panel-header">
+                <h2>System Activity</h2>
+                <div class="panel-controls">
+                    <button class="btn-pill" data-window="60">1m</button>
+                    <button class="btn-pill active" data-window="300">5m</button>
+                    <button class="btn-pill" data-window="900">15m</button>
+                    <button class="btn-pill" data-window="3600">1h</button>
+                </div>
+            </div>
+            <div id="chart"></div>
+        </section>
+
+        <aside class="panel anomaly-panel">
+            <div class="panel-header">
+                <h2>Detected Anomalies</h2>
+                <span class="hint">Click a card to inspect</span>
+            </div>
+            <div id="anomaly-list" class="anomaly-list">
+                <div class="empty-state">
+                    <div class="empty-icon">◎</div>
+                    <p>No anomalies detected.</p>
+                    <p class="empty-sub">System is operating within normal parameters.</p>
+                </div>
+            </div>
+        </aside>
+
+        <section class="panel processes-panel">
+            <div class="panel-header">
+                <h2>Top Processes</h2>
+                <span class="hint" id="processes-ts">—</span>
+            </div>
+            <table class="processes-table">
+                <thead>
+                    <tr>
+                        <th>Process</th>
+                        <th>PID</th>
+                        <th>User</th>
+                        <th class="num">CPU %</th>
+                        <th class="num">RAM (MB)</th>
+                    </tr>
+                </thead>
+                <tbody id="processes-tbody">
+                    <tr><td colspan="5" class="loading">Loading…</td></tr>
+                </tbody>
+            </table>
+        </section>
+    </main>
+
+    <div id="toast-container"></div>
+
+    <div id="suspect-modal" class="modal hidden">
+        <div class="modal-backdrop"></div>
+        <div class="modal-card">
+            <button class="modal-close" id="modal-close">×</button>
+            <div id="modal-body"></div>
+        </div>
+    </div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>

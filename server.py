@@ -34,6 +34,9 @@ from diagnostics import build_diagnostic, render_markdown
 from settings import load_settings, save_settings, settings_status
 from llm_diagnosis import diagnose
 
+from storage import Storage
+from detector import Anomaly, Suspect
+
 # ---------------------------------------------------------------------------
 # Paths
 # ---------------------------------------------------------------------------
@@ -202,12 +205,13 @@ async def lifespan(app: FastAPI):
     # Give the engines a moment so the aggregator has data to read on first tick
     await asyncio.sleep(1.5)
     agg.start()
+
     # Cache static system info — collected once at startup
     print("[server] Collecting system info & hardware inventory...")
     app.state.system_info = collect_system_info(hw)
     app.state.hardware_inventory = collect_hardware_inventory(hw)
-    # Detector configured for hackathon-demo responsiveness:
-    # short baseline window, low minimum samples, short cooldown
+
+    # Detector configured for hackathon-demo responsiveness
     det = Detector(
         agg,
         interval=3.0,
@@ -229,14 +233,57 @@ async def lifespan(app: FastAPI):
             "anomaly": anomaly_to_dict(anomaly),
         })
     det.on_event = on_anomaly_event
+
+    # Persistent storage
+    print("[server] Initializing storage...")
+    app.state.storage = Storage()
+
+    # Hydrate anomalies from disk into the detector's deque (before starting it)
+    hydrated = 0
+    for row in app.state.storage.load_recent_anomalies(hours=24):
+        suspects = [Suspect(**s) for s in row["suspects"]]
+        anomaly = Anomaly(
+            id=row["id"], metric=row["metric"], label=row["label"],
+            unit=row["unit"], started_at=row["started_at"], ended_at=row["ended_at"],
+            baseline=row["baseline"], threshold=row["threshold"],
+            peak_value=row["peak_value"], suspects=suspects,
+        )
+        det._anomalies.append(anomaly)
+        hydrated += 1
+    print(f"[server] Hydrated {hydrated} anomalies from previous sessions.")
+
+    # Wrap the websocket callback with a persistence layer
+    storage_ref = app.state.storage
+    original_on_event = det.on_event
+    def persistent_on_event(event_type: str, anomaly: Anomaly):
+        try:
+            storage_ref.upsert_anomaly(anomaly)
+        except Exception as e:
+            print(f"[storage] Failed to persist anomaly: {e}")
+        if original_on_event:
+            original_on_event(event_type, anomaly)
+    det.on_event = persistent_on_event
+
+    # Now start the detector — after storage hydration and on_event wrapping
     det.start()
 
-    # Stash on app state for endpoints to use
+    # Stash on app state for endpoints
     app.state.proc = proc
     app.state.hw = hw
     app.state.agg = agg
     app.state.det = det
     app.state.started_at = time.time()
+
+    # Background task: evict old data every hour
+    async def eviction_loop():
+        while True:
+            await asyncio.sleep(3600)
+            try:
+                storage_ref.evict_old()
+            except Exception as e:
+                print(f"[storage] eviction failed: {e}")
+
+    asyncio.create_task(eviction_loop())
 
     print("[server] Engines started. Listening on http://127.0.0.1:8000")
     try:
@@ -251,9 +298,9 @@ async def lifespan(app: FastAPI):
         except Exception: pass
         try: proc.stop()
         except Exception: pass
+        try: app.state.storage.close()
+        except Exception: pass
         print("[server] Goodbye.")
-
-
 # ---------------------------------------------------------------------------
 # App
 # ---------------------------------------------------------------------------
@@ -292,6 +339,7 @@ def health():
         "active_anomalies": [a.metric for a in det.active_anomalies()],
         "latest_sample_ts": sample.timestamp if sample else None,
         "available_metrics": _available_metrics(sample),
+        "storage": app.state.storage.stats(),
     }
 
 

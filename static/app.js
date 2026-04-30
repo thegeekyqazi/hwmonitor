@@ -867,3 +867,189 @@ async function copyExportToClipboard() {
         alert('Copy failed. You can manually select and copy from the preview below.');
     }
 }
+
+// ---------- Settings ----------
+document.getElementById('btn-settings').addEventListener('click', openSettingsModal);
+document.getElementById('settings-close').addEventListener('click', closeSettingsModal);
+document.getElementById('settings-cancel').addEventListener('click', closeSettingsModal);
+document.querySelector('#settings-modal .modal-backdrop').addEventListener('click', closeSettingsModal);
+document.getElementById('settings-save').addEventListener('click', saveSettings);
+
+async function openSettingsModal() {
+    document.getElementById('settings-modal').classList.remove('hidden');
+    document.getElementById('settings-claude-key').value = '';
+    document.getElementById('settings-openai-key').value = '';
+
+    const r = await fetch('/api/settings/status');
+    const status = await r.json();
+
+    const cs = document.getElementById('settings-claude-status');
+    cs.textContent = status.claude_configured ? '✓ Configured' : 'Not configured';
+    cs.className = 'settings-status ' + (status.claude_configured ? 'configured' : '');
+    document.getElementById('settings-claude-key').placeholder = status.claude_configured
+        ? '••••••• (leave blank to keep, or enter new to replace)'
+        : 'sk-ant-...';
+
+    const os = document.getElementById('settings-openai-status');
+    os.textContent = status.openai_configured ? '✓ Configured' : 'Not configured';
+    os.className = 'settings-status ' + (status.openai_configured ? 'configured' : '');
+    document.getElementById('settings-openai-key').placeholder = status.openai_configured
+        ? '••••••• (leave blank to keep, or enter new to replace)'
+        : 'sk-...';
+
+    const provider = status.preferred_provider || 'claude';
+    document.getElementById('settings-provider-' + provider).checked = true;
+}
+
+function closeSettingsModal() {
+    document.getElementById('settings-modal').classList.add('hidden');
+}
+
+async function saveSettings() {
+    const claudeKey = document.getElementById('settings-claude-key').value;
+    const openaiKey = document.getElementById('settings-openai-key').value;
+    const provider = document.querySelector('input[name="provider"]:checked')?.value;
+
+    const body = {};
+    if (claudeKey) body.anthropic_api_key = claudeKey;
+    if (openaiKey) body.openai_api_key = openaiKey;
+    if (provider) body.preferred_provider = provider;
+
+    try {
+        const r = await fetch('/api/settings', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(body),
+        });
+        if (!r.ok) {
+            const err = await r.json();
+            alert('Save failed: ' + (err.detail || 'unknown error'));
+            return;
+        }
+        closeSettingsModal();
+        showSuccessToast('Settings saved');
+    } catch (e) {
+        alert('Network error: ' + e.message);
+    }
+}
+
+
+// ---------- Diagnose with AI ----------
+document.getElementById('btn-diagnose').addEventListener('click', runDiagnosis);
+document.getElementById('diagnose-close').addEventListener('click', closeDiagnoseModal);
+document.querySelector('#diagnose-modal .modal-backdrop').addEventListener('click', closeDiagnoseModal);
+
+async function runDiagnosis() {
+    const modal = document.getElementById('diagnose-modal');
+    const body = document.getElementById('diagnose-body');
+    body.innerHTML = `
+        <div class="modal-title">Analyzing your system…</div>
+        <div class="modal-subtitle">Sending diagnostic report to LLM. This usually takes 5-15 seconds.</div>
+        <div class="diagnose-spinner"><div class="spinner"></div></div>
+    `;
+    modal.classList.remove('hidden');
+
+    try {
+        const r = await fetch('/api/diagnose', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({}),
+        });
+
+        if (!r.ok) {
+            const err = await r.json();
+            body.innerHTML = `
+                <div class="modal-title">Diagnosis failed</div>
+                <div class="modal-subtitle">${escapeHtml(err.detail || 'Unknown error')}</div>
+                <p style="margin-top:16px">Try opening Settings to verify your API key is configured.</p>
+            `;
+            return;
+        }
+
+        const data = await r.json();
+        renderDiagnosis(data);
+    } catch (e) {
+        body.innerHTML = `<div class="modal-title">Network error</div><div>${escapeHtml(e.message)}</div>`;
+    }
+}
+
+function closeDiagnoseModal() {
+    document.getElementById('diagnose-modal').classList.add('hidden');
+}
+
+function renderDiagnosis(data) {
+    const d = data.diagnosis;
+    const body = document.getElementById('diagnose-body');
+
+    const healthClass = {
+        excellent: 'health-excellent', good: 'health-good',
+        concerning: 'health-concerning', poor: 'health-poor',
+    }[d.overall_health] || '';
+    const healthIcon = {
+        excellent: '✓', good: '○', concerning: '⚠', poor: '✗',
+    }[d.overall_health] || '?';
+
+    let html = `
+        <div class="diagnose-header">
+            <div class="diagnose-health ${healthClass}">
+                <span class="diagnose-health-icon">${healthIcon}</span>
+                <span class="diagnose-health-text">${escapeHtml(d.overall_health || 'unknown').toUpperCase()}</span>
+            </div>
+            <div class="diagnose-meta">
+                Analyzed by ${escapeHtml(data.provider)} · ${data.elapsed_sec}s
+            </div>
+        </div>
+
+        <div class="diagnose-summary">${escapeHtml(d.summary || '')}</div>
+
+        <div class="diagnose-hwsw">
+            <strong>Hardware vs Software:</strong> ${escapeHtml(d.hardware_vs_software || '—')}
+        </div>
+    `;
+
+    if (d.issues_found?.length) {
+        html += '<div class="modal-section-title" style="margin-top:20px">Issues Found</div>';
+        for (const issue of d.issues_found) {
+            const sevClass = `severity-${issue.severity}`;
+            html += `
+                <div class="diagnose-issue ${sevClass}">
+                    <div class="diagnose-issue-header">
+                        <span class="diagnose-issue-title">${escapeHtml(issue.title)}</span>
+                        <span class="diagnose-issue-tags">
+                            <span class="tag tag-${issue.severity}">${escapeHtml(issue.severity)}</span>
+                            <span class="tag tag-${issue.category}">${escapeHtml(issue.category)}</span>
+                        </span>
+                    </div>
+                    <div class="diagnose-issue-body">${escapeHtml(issue.description)}</div>
+                    <div class="diagnose-issue-evidence">${escapeHtml(issue.evidence)}</div>
+                </div>
+            `;
+        }
+    }
+
+    if (d.recommendations?.length) {
+        html += '<div class="modal-section-title" style="margin-top:20px">Recommendations</div>';
+        for (const r of d.recommendations) {
+            const prClass = `priority-${r.priority}`;
+            html += `
+                <div class="diagnose-rec ${prClass}">
+                    <span class="diagnose-rec-priority">${escapeHtml(r.priority)}</span>
+                    <div class="diagnose-rec-body">
+                        <div class="diagnose-rec-action">${escapeHtml(r.action)}</div>
+                        <div class="diagnose-rec-rationale">${escapeHtml(r.rationale)}</div>
+                    </div>
+                </div>
+            `;
+        }
+    }
+
+    if (d.watch_for?.length) {
+        html += '<div class="modal-section-title" style="margin-top:20px">Watch For</div><ul class="diagnose-watch">';
+        for (const w of d.watch_for) {
+            html += `<li>${escapeHtml(w)}</li>`;
+        }
+        html += '</ul>';
+    }
+
+    body.innerHTML = html;
+}

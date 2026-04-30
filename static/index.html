@@ -32,8 +32,10 @@
             <span id="anomaly-count">0</span>
         </div>
         <button class="btn-pill" id="btn-system-info">System Info</button>
-<button class="btn-pill btn-export" id="btn-export">Export Report</button>
-</div>
+        <button class="btn-pill btn-export" id="btn-export">Export Report</button>
+        <button class="btn-pill" id="btn-diagnose">🤖 Diagnose with AI</button>
+        <button class="btn-pill" id="btn-settings">⚙ Settings</button>
+        </div>
     </header>
 
     <main class="dashboard">
@@ -117,6 +119,47 @@
             <button class="btn-pill" id="export-json">⬇ Download .json</button>
         </div>
         <div id="export-preview" class="export-preview"></div>
+    </div>
+</div>
+<div id="settings-modal" class="modal hidden">
+    <div class="modal-backdrop"></div>
+    <div class="modal-card">
+        <button class="modal-close" id="settings-close">×</button>
+        <div class="modal-title">Settings</div>
+        <div class="modal-subtitle">API keys are stored locally on your machine and never leave it except to the chosen LLM provider.</div>
+
+        <div class="settings-section">
+            <label class="settings-label">Anthropic Claude API Key</label>
+            <input type="password" id="settings-claude-key" class="settings-input" placeholder="sk-ant-..." autocomplete="off">
+            <div class="settings-status" id="settings-claude-status"></div>
+        </div>
+
+        <div class="settings-section">
+            <label class="settings-label">OpenAI API Key</label>
+            <input type="password" id="settings-openai-key" class="settings-input" placeholder="sk-..." autocomplete="off">
+            <div class="settings-status" id="settings-openai-status"></div>
+        </div>
+
+        <div class="settings-section">
+            <label class="settings-label">Preferred Provider (default for "Diagnose with AI")</label>
+            <div class="settings-radios">
+                <label><input type="radio" name="provider" value="claude" id="settings-provider-claude"> Claude</label>
+                <label><input type="radio" name="provider" value="openai" id="settings-provider-openai"> OpenAI</label>
+            </div>
+        </div>
+
+        <div class="settings-actions">
+            <button class="btn-pill btn-primary" id="settings-save">Save</button>
+            <button class="btn-pill" id="settings-cancel">Cancel</button>
+        </div>
+    </div>
+</div>
+
+<div id="diagnose-modal" class="modal hidden">
+    <div class="modal-backdrop"></div>
+    <div class="modal-card modal-large">
+        <button class="modal-close" id="diagnose-close">×</button>
+        <div id="diagnose-body"></div>
     </div>
 </div>
 

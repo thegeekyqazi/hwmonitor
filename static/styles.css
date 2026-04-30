@@ -668,3 +668,176 @@ h1, h2 { font-weight: 600; letter-spacing: -0.01em; }
     max-height: 50vh;
     overflow-y: auto;
 }
+
+/* ---------- Settings modal ---------- */
+.settings-section { margin-bottom: 18px; }
+.settings-label {
+    display: block;
+    font-size: 12px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 6px;
+    font-weight: 600;
+}
+.settings-input {
+    width: 100%;
+    padding: 8px 12px;
+    border: 1px solid var(--panel-border);
+    border-radius: var(--radius-sm);
+    font-size: 13px;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+}
+.settings-input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+.settings-status {
+    margin-top: 6px;
+    font-size: 12px;
+    color: var(--text-muted);
+}
+.settings-status.configured { color: var(--success); font-weight: 500; }
+.settings-radios {
+    display: flex;
+    gap: 18px;
+}
+.settings-radios label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    cursor: pointer;
+}
+.settings-actions {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+    margin-top: 24px;
+}
+
+/* ---------- Diagnose modal ---------- */
+.diagnose-spinner {
+    display: flex;
+    justify-content: center;
+    padding: 40px 0;
+}
+.spinner {
+    width: 40px; height: 40px;
+    border: 3px solid var(--panel-border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.diagnose-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+}
+.diagnose-health {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 16px;
+    border-radius: 999px;
+    font-weight: 600;
+    font-size: 13px;
+    letter-spacing: 0.04em;
+}
+.diagnose-health-icon { font-size: 18px; }
+.health-excellent { background: #e8f7ee; color: var(--success); }
+.health-good { background: #eef4ff; color: var(--accent); }
+.health-concerning { background: #fff5e0; color: var(--warn); }
+.health-poor { background: var(--danger-soft); color: var(--danger); }
+.diagnose-meta { color: var(--text-muted); font-size: 12px; }
+
+.diagnose-summary {
+    background: var(--bg);
+    padding: 14px 16px;
+    border-radius: var(--radius-sm);
+    border-left: 3px solid var(--accent);
+    margin-bottom: 14px;
+    line-height: 1.5;
+}
+.diagnose-hwsw {
+    padding: 10px 14px;
+    font-size: 13px;
+    color: var(--text-secondary);
+}
+
+.diagnose-issue {
+    background: var(--bg);
+    border: 1px solid var(--panel-border);
+    border-radius: var(--radius-sm);
+    padding: 12px 14px;
+    margin-bottom: 8px;
+    border-left: 3px solid var(--text-muted);
+}
+.diagnose-issue.severity-critical, .diagnose-issue.severity-high { border-left-color: var(--danger); }
+.diagnose-issue.severity-medium { border-left-color: var(--warn); }
+.diagnose-issue.severity-low { border-left-color: var(--accent); }
+
+.diagnose-issue-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 6px;
+}
+.diagnose-issue-title { font-weight: 600; font-size: 14px; }
+.diagnose-issue-tags { display: flex; gap: 4px; }
+.tag {
+    font-size: 10px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    font-weight: 600;
+    background: var(--panel-border);
+    color: var(--text-secondary);
+}
+.tag.tag-critical, .tag.tag-high { background: var(--danger-soft); color: var(--danger); }
+.tag.tag-medium { background: #fff5e0; color: var(--warn); }
+.tag.tag-low { background: var(--accent-soft); color: var(--accent); }
+.tag.tag-hardware { background: #f0e7ff; color: #6638b0; }
+.tag.tag-software { background: var(--accent-soft); color: var(--accent); }
+.tag.tag-configuration { background: #e0f7ff; color: #0080c4; }
+.tag.tag-user_behavior { background: #fff0f4; color: #c4407a; }
+
+.diagnose-issue-body { font-size: 13px; line-height: 1.5; margin-bottom: 6px; }
+.diagnose-issue-evidence {
+    font-size: 12px; color: var(--text-secondary); font-style: italic;
+    border-top: 1px dashed var(--panel-border); padding-top: 6px;
+}
+
+.diagnose-rec {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 10px 14px;
+    margin-bottom: 6px;
+    background: var(--bg);
+    border-radius: var(--radius-sm);
+}
+.diagnose-rec-priority {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 3px 8px;
+    border-radius: 999px;
+    font-weight: 600;
+    flex-shrink: 0;
+    min-width: 80px;
+    text-align: center;
+}
+.priority-immediate .diagnose-rec-priority { background: var(--danger-soft); color: var(--danger); }
+.priority-soon .diagnose-rec-priority { background: #fff5e0; color: var(--warn); }
+.priority-eventually .diagnose-rec-priority { background: var(--accent-soft); color: var(--accent); }
+.diagnose-rec-action { font-weight: 500; font-size: 13px; }
+.diagnose-rec-rationale { font-size: 12px; color: var(--text-secondary); margin-top: 2px; }
+
+.diagnose-watch {
+    margin-left: 20px;
+    font-size: 13px;
+    line-height: 1.7;
+    color: var(--text-secondary);
+}

@@ -888,7 +888,7 @@ async function openSettingsModal() {
         if (status[cfgKey]) {
             statusEl.textContent = '✓ Configured';
             statusEl.className = 'settings-status configured';
-            inputEl.placeholder = '••••••• (leave blank to keep, or enter new to replace)';
+            inputEl.placeholder = '••••••• (leave blank to keep)';
         } else {
             statusEl.textContent = 'Not configured';
             statusEl.className = 'settings-status';
@@ -906,6 +906,18 @@ async function openSettingsModal() {
         document.getElementById('settings-gemini-status'),
         document.getElementById('settings-gemini-key'), 'AIza...');
 
+    // Ollama: prefill the inputs with current values (no password masking)
+    document.getElementById('settings-ollama-url').value = status.ollama_base_url || '';
+    document.getElementById('settings-ollama-model').value = status.ollama_model || '';
+    const ollStatus = document.getElementById('settings-ollama-status');
+    if (status.ollama_configured) {
+        ollStatus.textContent = `✓ Using model: ${status.ollama_model}`;
+        ollStatus.className = 'settings-status configured';
+    } else {
+        ollStatus.textContent = 'Not configured';
+        ollStatus.className = 'settings-status';
+    }
+
     const provider = status.preferred_provider || 'claude';
     document.getElementById('settings-provider-' + provider).checked = true;
 }
@@ -917,12 +929,19 @@ async function saveSettings() {
     const claudeKey = document.getElementById('settings-claude-key').value;
     const openaiKey = document.getElementById('settings-openai-key').value;
     const geminiKey = document.getElementById('settings-gemini-key').value;
+    const ollamaUrl = document.getElementById('settings-ollama-url').value.trim();
+    const ollamaModel = document.getElementById('settings-ollama-model').value.trim();
     const provider = document.querySelector('input[name="provider"]:checked')?.value;
 
     const body = {};
     if (claudeKey) body.anthropic_api_key = claudeKey;
     if (openaiKey) body.openai_api_key = openaiKey;
     if (geminiKey) body.gemini_api_key = geminiKey;
+    // Ollama URL: send even if blank so user can clear it; but only send model if filled
+    if (ollamaUrl !== document.getElementById('settings-ollama-url').defaultValue) {
+        body.ollama_base_url = ollamaUrl;
+    }
+    if (ollamaModel) body.ollama_model = ollamaModel;
     if (provider) body.preferred_provider = provider;
 
     try {
@@ -1062,4 +1081,45 @@ function renderDiagnosis(data) {
     }
 
     body.innerHTML = html;
+}
+
+document.getElementById('settings-ollama-detect').addEventListener('click', detectOllamaModels);
+
+async function detectOllamaModels() {
+    const status = document.getElementById('settings-ollama-status');
+    status.textContent = 'Probing Ollama…';
+    status.className = 'settings-status';
+
+    // Save current URL temporarily so the backend uses it for detection
+    const url = document.getElementById('settings-ollama-url').value.trim();
+    if (url) {
+        await fetch('/api/settings', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ollama_base_url: url}),
+        });
+    }
+
+    try {
+        const r = await fetch('/api/settings/ollama_models');
+        const data = await r.json();
+        if (!data.ok) {
+            status.textContent = `✗ ${data.error || 'Could not reach Ollama'}`;
+            status.className = 'settings-status';
+            return;
+        }
+        if (data.models.length === 0) {
+            status.textContent = '✓ Ollama reachable but no models pulled. Run: ollama pull llama3.2';
+            status.className = 'settings-status';
+            return;
+        }
+        status.innerHTML = `✓ Found ${data.models.length} model(s): <strong>${data.models.map(escapeHtml).join(', ')}</strong>`;
+        status.className = 'settings-status configured';
+        // Auto-fill the model field with the first one if currently empty
+        const modelInput = document.getElementById('settings-ollama-model');
+        if (!modelInput.value) modelInput.value = data.models[0];
+    } catch (e) {
+        status.textContent = `✗ ${e.message}`;
+        status.className = 'settings-status';
+    }
 }

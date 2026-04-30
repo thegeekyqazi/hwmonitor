@@ -853,3 +853,13 @@ h1, h2 { font-weight: 600; letter-spacing: -0.01em; }
 .settings-hint a:hover {
     text-decoration: underline;
 }
+
+.settings-input + .settings-input { margin-top: 6px; }
+.settings-hint code {
+    background: var(--bg);
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 11px;
+    color: var(--text-primary);
+}

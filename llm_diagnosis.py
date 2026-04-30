@@ -135,6 +135,63 @@ def diagnose_with_gemini(markdown_report: str, api_key: str, model: str = "gemin
 
     return _parse_json_response(response.text, provider="gemini")
 
+def diagnose_with_ollama(markdown_report: str, base_url: str = "http://localhost:11434",
+                        model: str = "llama3.2") -> Dict[str, Any]:
+    """Call a local Ollama server. No API key needed."""
+    import requests
+
+    base_url = base_url.rstrip('/')
+
+    # First, sanity check Ollama is running
+    try:
+        r = requests.get(f"{base_url}/api/tags", timeout=3)
+        r.raise_for_status()
+    except requests.exceptions.ConnectionError:
+        raise RuntimeError(f"Cannot reach Ollama at {base_url}. Is `ollama serve` running?")
+    except Exception as e:
+        raise RuntimeError(f"Ollama health check failed: {e}")
+
+    # Verify the model is pulled
+    available = [m.get('name', '') for m in r.json().get('models', [])]
+    model_present = any(m == model or m.startswith(model + ':') for m in available)
+    if not model_present:
+        raise RuntimeError(
+            f"Model '{model}' not found in Ollama. "
+            f"Run: `ollama pull {model}`. Available: {', '.join(available) or '(none)'}"
+        )
+
+    # Make the chat call with JSON-mode enforcement
+    try:
+        r = requests.post(
+            f"{base_url}/api/chat",
+            json={
+                "model": model,
+                "messages": [
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user", "content": f"Here is the diagnostic report:\n\n{markdown_report}\n\nProvide your diagnosis as JSON."},
+                ],
+                "format": "json",
+                "stream": False,
+                "options": {
+                    "temperature": 0.4,
+                    "num_predict": 4096,
+                },
+            },
+            timeout=180,  # local models can be slow on first call
+        )
+        r.raise_for_status()
+    except requests.exceptions.Timeout:
+        raise RuntimeError(f"Ollama timed out (180s). Model '{model}' may be too slow on this hardware.")
+    except Exception as e:
+        raise RuntimeError(f"Ollama request failed: {e}")
+
+    data = r.json()
+    text = data.get('message', {}).get('content', '')
+    if not text:
+        raise RuntimeError("Ollama returned empty response")
+
+    return _parse_json_response(text, provider="ollama")
+
 def _parse_json_response(text: str, provider: str) -> Dict[str, Any]:
     """Parse JSON, handling stray markdown fences if model included them."""
     text = text.strip()
@@ -157,7 +214,8 @@ def _parse_json_response(text: str, provider: str) -> Dict[str, Any]:
 # Dispatcher
 # ---------------------------------------------------------------------------
 
-def diagnose(markdown_report: str, provider: str, api_key: str, model: Optional[str] = None) -> Dict[str, Any]:
+def diagnose(markdown_report: str, provider: str, api_key: Optional[str] = None,
+             model: Optional[str] = None, base_url: Optional[str] = None) -> Dict[str, Any]:
     """Main entry point. Returns diagnosis dict + metadata."""
     start = time.time()
 
@@ -167,8 +225,14 @@ def diagnose(markdown_report: str, provider: str, api_key: str, model: Optional[
         result = diagnose_with_openai(markdown_report, api_key, model or "gpt-4o-mini")
     elif provider == "gemini":
         result = diagnose_with_gemini(markdown_report, api_key, model or "gemini-2.0-flash")
+    elif provider == "ollama":
+        result = diagnose_with_ollama(
+            markdown_report,
+            base_url=base_url or "http://localhost:11434",
+            model=model or "llama3.2",
+        )
     else:
-        raise ValueError(f"Unknown provider: {provider}. Use 'claude', 'openai', or 'gemini'.")
+        raise ValueError(f"Unknown provider: {provider}. Use 'claude', 'openai', 'gemini', or 'ollama'.")
 
     return {
         "provider": provider,

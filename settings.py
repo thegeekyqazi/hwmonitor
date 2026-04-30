@@ -44,11 +44,13 @@ def set_setting(key: str, value: Any):
 
 
 def settings_status() -> Dict[str, bool]:
-    """Returns which providers are configured (without exposing the actual keys)."""
     s = load_settings()
     return {
         "claude_configured": bool(s.get("anthropic_api_key")),
         "openai_configured": bool(s.get("openai_api_key")),
         "gemini_configured": bool(s.get("gemini_api_key")),
+        "ollama_configured": bool(s.get("ollama_model")),  # configured if a model is set
+        "ollama_base_url": s.get("ollama_base_url", "http://localhost:11434"),
+        "ollama_model": s.get("ollama_model", ""),
         "preferred_provider": s.get("preferred_provider", "claude"),
     }

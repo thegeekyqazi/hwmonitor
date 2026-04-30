@@ -582,6 +582,8 @@ class SettingsUpdate(BaseModel):
     anthropic_api_key: Optional[str] = None
     openai_api_key: Optional[str] = None
     gemini_api_key: Optional[str] = None
+    ollama_base_url: Optional[str] = None
+    ollama_model: Optional[str] = None
     preferred_provider: Optional[str] = None
 
 @app.get("/api/settings/status")
@@ -612,36 +614,70 @@ def update_settings(body: SettingsUpdate):
         else:
             current["gemini_api_key"] = body.gemini_api_key
 
+    if body.ollama_base_url is not None:
+        if body.ollama_base_url == "":
+            current.pop("ollama_base_url", None)
+        else:
+            current["ollama_base_url"] = body.ollama_base_url
+
+    if body.ollama_model is not None:
+        if body.ollama_model == "":
+            current.pop("ollama_model", None)
+        else:
+            current["ollama_model"] = body.ollama_model
+
     if body.preferred_provider is not None:
-        if body.preferred_provider not in ("claude", "openai", "gemini"):
-            raise HTTPException(status_code=400, detail="Provider must be 'claude', 'openai', or 'gemini'")
+        if body.preferred_provider not in ("claude", "openai", "gemini", "ollama"):
+            raise HTTPException(status_code=400, detail="Provider must be 'claude', 'openai', 'gemini', or 'ollama'")
         current["preferred_provider"] = body.preferred_provider
 
     save_settings(current)
     return settings_status()
 
+@app.get("/api/settings/ollama_models")
+def list_ollama_models():
+    """List models pulled in the local Ollama instance."""
+    settings = load_settings()
+    base_url = settings.get("ollama_base_url", "http://localhost:11434").rstrip('/')
+    try:
+        import requests
+        r = requests.get(f"{base_url}/api/tags", timeout=3)
+        r.raise_for_status()
+        models = [m.get('name', '') for m in r.json().get('models', [])]
+        return {"ok": True, "base_url": base_url, "models": models}
+    except Exception as e:
+        return {"ok": False, "base_url": base_url, "error": str(e), "models": []}
 class DiagnoseRequest(BaseModel):
     provider: Optional[str] = None  # if None, use preferred from settings
     model: Optional[str] = None
-
 
 @app.post("/api/diagnose")
 def diagnose_with_llm(body: DiagnoseRequest):
     settings = load_settings()
     provider = body.provider or settings.get("preferred_provider", "claude")
 
+    api_key = None
+    base_url = None
+    model = body.model
+
     if provider == "claude":
         api_key = settings.get("anthropic_api_key")
         if not api_key:
-            raise HTTPException(status_code=400, detail="Anthropic API key not configured. Set it in Settings.")
+            raise HTTPException(status_code=400, detail="Anthropic API key not configured.")
     elif provider == "openai":
         api_key = settings.get("openai_api_key")
         if not api_key:
-            raise HTTPException(status_code=400, detail="OpenAI API key not configured. Set it in Settings.")
+            raise HTTPException(status_code=400, detail="OpenAI API key not configured.")
     elif provider == "gemini":
         api_key = settings.get("gemini_api_key")
         if not api_key:
-            raise HTTPException(status_code=400, detail="Gemini API key not configured. Set it in Settings.")
+            raise HTTPException(status_code=400, detail="Gemini API key not configured.")
+    elif provider == "ollama":
+        base_url = settings.get("ollama_base_url", "http://localhost:11434")
+        if not model:
+            model = settings.get("ollama_model")
+        if not model:
+            raise HTTPException(status_code=400, detail="Ollama model not configured. Set it in Settings.")
     else:
         raise HTTPException(status_code=400, detail=f"Unknown provider: {provider}")
 
@@ -650,7 +686,8 @@ def diagnose_with_llm(body: DiagnoseRequest):
     md_report = render_markdown(diagnostic)
 
     try:
-        result = diagnose(md_report, provider=provider, api_key=api_key, model=body.model)
+        result = diagnose(md_report, provider=provider, api_key=api_key,
+                          model=model, base_url=base_url)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"LLM call failed: {str(e)}")
 

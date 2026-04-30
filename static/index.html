@@ -148,12 +148,25 @@
         </div>
 
         <div class="settings-section">
+            <label class="settings-label">Ollama (local model)</label>
+            <input type="text" id="settings-ollama-url" class="settings-input" placeholder="http://localhost:11434">
+            <input type="text" id="settings-ollama-model" class="settings-input" placeholder="llama3.2" style="margin-top:6px">
+            <button class="btn-pill" id="settings-ollama-detect" style="margin-top:6px">Detect installed models</button>
+            <div class="settings-status" id="settings-ollama-status"></div>
+            <div class="settings-hint">
+                Run <code>ollama serve</code> locally, then <code>ollama pull llama3.2</code>.
+                Fully private — data never leaves your machine.
+            </div>
+        </div>
+
+        <div class="settings-section">
             <label class="settings-label">Preferred Provider (default for "Diagnose with AI")</label>
             <div class="settings-radios">
-                <label><input type="radio" name="provider" value="claude" id="settings-provider-claude"> Claude</label>
-                <label><input type="radio" name="provider" value="openai" id="settings-provider-openai"> OpenAI</label>
-                <label><input type="radio" name="provider" value="gemini" id="settings-provider-gemini"> Gemini</label>
-            </div>
+            <label><input type="radio" name="provider" value="claude" id="settings-provider-claude"> Claude</label>
+            <label><input type="radio" name="provider" value="openai" id="settings-provider-openai"> OpenAI</label>
+            <label><input type="radio" name="provider" value="gemini" id="settings-provider-gemini"> Gemini</label>
+            <label><input type="radio" name="provider" value="ollama" id="settings-provider-ollama"> Ollama</label>
+        </div>
         </div>
 
         <div class="settings-actions">
